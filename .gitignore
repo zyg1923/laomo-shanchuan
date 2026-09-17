@@ -1,0 +1,21 @@
+# Build / packaging
+build/
+build_launcher/
+dist/
+packages/
+*.exe
+*.spec.bak
+
+# Runtime data
+instance/
+logs/
+uploads/
+__pycache__/
+*.py[cod]
+*.log
+
+# Editor / OS
+.idea/
+.vscode/
+.cursor/
+.DS_Store

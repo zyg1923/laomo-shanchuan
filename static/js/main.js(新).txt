@@ -1,0 +1,779 @@
+/**
+ * 老默闪传 - 主页面JavaScript脚本
+ * 版本：终极修复版
+ * 修复内容：
+ * 1. 修复配置读取接口 (从 /admin/config 改为 /api/config)
+ * 2. 修复公网 IP 访问时剪贴板 API 崩溃问题
+ * 3. 修复输入框读取逻辑 (适配 index.html ID，增加容错)
+ * 作者：老默闪传系统
+ */
+
+// ==========================================
+// 全局变量定义
+// ==========================================
+
+let uploadHistory = JSON.parse(localStorage.getItem('uploadHistory') || '[]');
+let downloadHistory = JSON.parse(localStorage.getItem('downloadHistory') || '[]');
+let uploadDisplayedCount = 5;
+let downloadDisplayedCount = 5;
+let uploadLoading = false;
+let downloadLoading = false;
+
+/**
+ * 系统配置对象
+ * 默认值会在页面加载时被服务器配置覆盖
+ */
+let systemConfig = {
+    max_upload_size: 50,
+    max_downloads: 10,
+    max_expire_hours: 72,
+    allowed_extensions: 'jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx,ppt,pptx,txt,zip,rar,mp4,mp3'
+};
+
+// ==========================================
+// 系统配置管理
+// ==========================================
+
+/**
+ * 加载系统配置
+ * 从 /api/config 接口获取最新配置
+ */
+async function loadSystemConfig() {
+    try {
+        // 使用公开接口 /api/config (无需登录)
+        const response = await fetch('/api/config');
+        
+        if (response.ok) {
+            const config = await response.json();
+            
+            // 更新全局配置
+            systemConfig = {
+                max_upload_size: parseInt(config.max_upload_size) || 50,
+                max_downloads: parseInt(config.max_downloads) || 10,
+                max_expire_hours: parseInt(config.max_expire_hours) || 72,
+                allowed_extensions: config.allowed_extensions || 'jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx,ppt,pptx,txt,zip,rar,mp4,mp3'
+            };
+            
+            console.log('系统配置加载成功:', systemConfig);
+            
+            // 更新界面限制
+            updateFrontendLimits();
+            updateConfigDisplay();
+        } else {
+            console.warn('加载配置失败，使用默认值');
+        }
+    } catch (error) {
+        console.error('加载系统配置失败:', error);
+        console.log('使用默认配置:', systemConfig);
+    }
+}
+
+function updateFrontendLimits() {
+    const maxDownloadsSelect = document.getElementById('max_downloads');
+    if (maxDownloadsSelect) {
+        maxDownloadsSelect.max = systemConfig.max_downloads;
+        // 确保当前值不超限
+        const current = parseInt(maxDownloadsSelect.value) || 1;
+        maxDownloadsSelect.value = Math.min(current, systemConfig.max_downloads);
+    }
+    
+    const expireHoursSelect = document.getElementById('expire_hours');
+    if (expireHoursSelect) {
+        expireHoursSelect.max = systemConfig.max_expire_hours;
+        const current = parseInt(expireHoursSelect.value) || 24;
+        expireHoursSelect.value = Math.min(current, systemConfig.max_expire_hours);
+    }
+}
+
+function updateConfigDisplay() {
+    const maxSizeDisplay = document.getElementById('max-size-display');
+    if (maxSizeDisplay) maxSizeDisplay.textContent = `${systemConfig.max_upload_size}MB`;
+    
+    const maxDownloadsDisplay = document.getElementById('max-downloads-display');
+    if (maxDownloadsDisplay) maxDownloadsDisplay.textContent = `${systemConfig.max_downloads}次`;
+    
+    const maxHoursDisplay = document.getElementById('max-hours-display');
+    if (maxHoursDisplay) maxHoursDisplay.textContent = `${systemConfig.max_expire_hours}小时`;
+}
+
+// ==========================================
+// 页面切换管理
+// ==========================================
+
+function showPage(page) {
+    document.getElementById('main-page').style.display = 'none';
+    document.getElementById('history-page').style.display = 'none';
+    document.getElementById(page + '-page').style.display = 'block';
+    
+    const navLinks = document.querySelectorAll('.nav a');
+    navLinks.forEach(link => link.classList.remove('active'));
+    
+    if (event && event.target) {
+        event.target.classList.add('active');
+    }
+    
+    if (page === 'history') {
+        updateHistoryPage();
+    }
+}
+
+// ==========================================
+// 文件上传功能
+// ==========================================
+
+function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    // 前端验证
+    const maxSizeMB = systemConfig.max_upload_size;
+    const maxSizeBytes = maxSizeMB * 1024 * 1024;
+    if (file.size > maxSizeBytes) {
+        showError(`文件大小超过限制（最大 ${maxSizeMB}MB）`);
+        event.target.value = '';
+        return;
+    }
+
+    const allowedExtensions = systemConfig.allowed_extensions.split(',');
+    const fileExtension = file.name.split('.').pop().toLowerCase();
+    if (allowedExtensions.length > 0 && !allowedExtensions.includes(fileExtension)) {
+        showError(`不支持的文件类型：${fileExtension}，支持的类型：${allowedExtensions.join(', ')}`);
+        event.target.value = '';
+        return;
+    }
+
+    // 准备上传
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('max_downloads', Math.min(
+        parseInt(document.getElementById('max_downloads').value) || 1, 
+        systemConfig.max_downloads
+    ));
+    formData.append('expire_hours', Math.min(
+        parseInt(document.getElementById('expire_hours').value) || 24, 
+        systemConfig.max_expire_hours
+    ));
+
+    showLoading();
+
+    fetch('/upload', {
+        method: 'POST',
+        body: formData
+    })
+    .then(async response => {
+        if (!response.ok) {
+            let errorMessage = `上传失败 (${response.status})`;
+            try {
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    const errorData = await response.json();
+                    errorMessage = errorData.error || errorMessage;
+                } else {
+                    const errorText = await response.text();
+                    if (errorText.includes('413') || response.status === 413) {
+                        errorMessage = `文件大小超过限制（最大 ${systemConfig.max_upload_size}MB）`;
+                    }
+                }
+            } catch (e) {
+                console.warn('无法解析错误响应:', e);
+            }
+            throw new Error(errorMessage);
+        }
+        
+        try {
+            return await response.json();
+        } catch (e) {
+            throw new Error('服务器响应格式错误');
+        }
+    })
+    .then(data => {
+        if (data.success) {
+            const extractCodeEl = document.getElementById('extract-code-text');
+            const deleteCodeEl = document.getElementById('delete-code-text');
+            
+            if (extractCodeEl) extractCodeEl.textContent = data.extract_code;
+            if (deleteCodeEl) deleteCodeEl.textContent = data.delete_code;
+            
+            const extractIndicator = document.getElementById('extract-copy-indicator');
+            if (extractIndicator) {
+                extractIndicator.textContent = '已自动复制';
+                extractIndicator.className = 'copy-indicator';
+            }
+            
+            const deleteIndicator = document.getElementById('delete-copy-indicator');
+            if (deleteIndicator) {
+                deleteIndicator.textContent = '点击复制';
+                deleteIndicator.className = 'copy-indicator pending';
+            }
+            
+            const modal = document.getElementById('success-modal');
+            if (modal) modal.style.display = 'flex';
+            
+            // 🔒 安全调用剪贴板 API (防止公网崩溃)
+            if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(data.extract_code).then(() => {
+                    console.log('提取码已自动复制到剪贴板');
+                }).catch(err => {
+                    console.error('自动复制失败:', err);
+                });
+            } else {
+                console.warn('当前浏览器环境不支持剪贴板API');
+            }
+            
+            const newUpload = {
+                id: Date.now(),
+                filename: data.filename,
+                extractCode: data.extract_code,
+                deleteCode: data.delete_code,
+                time: new Date().toLocaleString()
+            };
+            
+            uploadHistory.unshift(newUpload);
+            localStorage.setItem('uploadHistory', JSON.stringify(uploadHistory));
+            
+            console.log('文件上传成功:', data);
+        } else {
+            showError('上传失败: ' + (data.error || '未知错误'));
+        }
+    })
+    .catch(error => {
+        console.error('上传错误详情:', error);
+        showError('上传过程中发生错误: ' + error.message);
+    })
+    .finally(() => {
+        hideLoading();
+        event.target.value = '';
+    });
+}
+
+// ==========================================
+// 文件下载/删除功能
+// ==========================================
+
+function updateButtonText() {
+    const deleteCode = document.getElementById('delete-code');
+    const actionButton = document.getElementById('action-button');
+    
+    if (deleteCode.value) {
+        actionButton.textContent = '删除文件';
+        actionButton.className = 'btn btn-danger';
+    } else {
+        actionButton.textContent = '下载文件';
+        actionButton.className = 'btn btn-primary';
+    }
+}
+
+function handleReceive() {
+    // ==========================================
+    // 🔧 核心：获取输入框元素 (完全匹配 index.html)
+    // ==========================================
+    const extractCodeEl = document.getElementById('extract-code');
+    const deleteCodeEl = document.getElementById('delete-code');
+    
+    // 安全检查：确保元素存在
+    if (!extractCodeEl || !deleteCodeEl) {
+        console.error('❌ 严重错误：找不到提取码或删除码输入框！');
+        alert('系统错误：找不到输入框，请刷新页面重试。');
+        return;
+    }
+
+    // 获取值并去除首尾空格 (非常重要！)
+    const extractCodeVal = (extractCodeEl.value || '').trim();
+    const deleteCodeVal = (deleteCodeEl.value || '').trim();
+
+    // 调试日志
+    console.log(`🔍 获取到值 - 提取码: "${extractCodeVal}", 删除码: "${deleteCodeVal}"`);
+
+    // 隐藏消息
+    const errorDiv = document.getElementById('receive-error');
+    const successDiv = document.getElementById('receive-success');
+    if (errorDiv) errorDiv.style.display = 'none';
+    if (successDiv) successDiv.style.display = 'none';
+
+    // 验证输入
+    if (!extractCodeVal && !deleteCodeVal) {
+        showError('请输入提取码或删除码');
+        return;
+    }
+    
+    const code = extractCodeVal || deleteCodeVal;
+    showLoading();
+    
+    // 发送请求
+    fetch(`/d/${code}`)
+    .then(async response => {
+        if (!response.ok) {
+            let errorMessage = `操作失败 (${response.status})`;
+            try {
+                const contentType = response.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    const errorData = await response.json();
+                    errorMessage = errorData.error || errorMessage;
+                } else {
+                    const errorText = await response.text();
+                    if (errorText.includes('文件已过期')) {
+                        errorMessage = '文件已过期';
+                    } else if (errorText.includes('已达到最大下载次数')) {
+                        errorMessage = '已达到最大下载次数';
+                    } else if (errorText.includes('文件不存在')) {
+                        errorMessage = '文件不存在或已被删除';
+                    }
+                }
+            } catch (e) {
+                console.warn('无法解析错误响应:', e);
+            }
+            throw new Error(errorMessage);
+        }
+        
+        const contentType = response.headers.get('content-type');
+        const contentDisposition = response.headers.get('content-disposition');
+        
+        if (contentDisposition && contentDisposition.includes('attachment')) {
+            // 文件下载
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            let filename = '下载的文件';
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                if (filenameMatch && filenameMatch[1]) {
+                    filename = filenameMatch[1].replace(/['"]/g, '');
+                }
+            }
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            
+            const newDownload = {
+                id: Date.now(),
+                filename: filename,
+                time: new Date().toLocaleString()
+            };
+            downloadHistory.unshift(newDownload);
+            localStorage.setItem('downloadHistory', JSON.stringify(downloadHistory));
+            
+            extractCodeEl.value = '';
+            deleteCodeEl.value = '';
+            updateButtonText();
+            
+            showSuccess('文件下载成功');
+            console.log('文件下载成功:', filename);
+            
+        } else if (contentType && contentType.includes('application/json')) {
+            // 删除文件
+            try {
+                const data = await response.json();
+                if (data.message) {
+                    showSuccess(data.message);
+                    uploadHistory = uploadHistory.filter(item => 
+                        item.extractCode !== extractCodeVal && item.deleteCode !== deleteCodeVal
+                    );
+                    localStorage.setItem('uploadHistory', JSON.stringify(uploadHistory));
+                    
+                    extractCodeEl.value = '';
+                    deleteCodeEl.value = '';
+                    updateButtonText();
+                    console.log('文件删除成功');
+                } else {
+                    throw new Error(data.error || '操作失败');
+                }
+            } catch (e) {
+                throw new Error('服务器响应格式错误');
+            }
+        } else {
+            throw new Error('服务器响应格式错误');
+        }
+    })
+    .catch(error => {
+        console.error('操作错误详情:', error);
+        showError('操作过程中发生错误: ' + error.message);
+    })
+    .finally(() => {
+        hideLoading();
+    });
+}
+
+// ==========================================
+// 历史记录管理
+// ==========================================
+
+function updateHistoryPage() {
+    updateUploadHistory();
+    updateDownloadHistory();
+}
+
+function updateUploadHistory() {
+    const content = document.getElementById('upload-history-content');
+    if (!content) return;
+    
+    if (uploadHistory.length === 0) {
+        content.innerHTML = `
+            <div class="empty-state">
+                <i>📂</i>
+                <p>暂无上传记录</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const items = uploadHistory.slice(0, uploadDisplayedCount);
+    let html = '';
+    items.forEach(item => {
+        html += `
+            <div class="history-item">
+                <div class="history-filename">${item.filename}</div>
+                <div class="history-time">${item.time}</div>
+                <div class="history-actions">
+                    <div 
+                        class="copyable-code" 
+                        onclick="copyHistoryCode('${item.extractCode}', '提取码')"
+                        role="button"
+                        tabindex="0"
+                        aria-label="复制提取码"
+                    >
+                        提取码: ${item.extractCode}
+                        <span class="copy-tooltip">点击复制</span>
+                    </div>
+                    <div 
+                        class="copyable-code delete-code" 
+                        onclick="copyHistoryCode('${item.deleteCode}', '删除码')"
+                        role="button"
+                        tabindex="0"
+                        aria-label="复制删除码"
+                    >
+                        删除码: ${item.deleteCode}
+                        <span class="copy-tooltip">点击复制</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    content.innerHTML = html;
+    
+    const uploadLoading = document.getElementById('upload-loading');
+    if (uploadHistory.length > uploadDisplayedCount) {
+        uploadLoading.classList.add('active');
+    } else {
+        uploadLoading.classList.remove('active');
+    }
+}
+
+function updateDownloadHistory() {
+    const content = document.getElementById('download-history-content');
+    if (!content) return;
+    
+    if (downloadHistory.length === 0) {
+        content.innerHTML = `
+            <div class="empty-state">
+                <i>💾</i>
+                <p>暂无下载记录</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const items = downloadHistory.slice(0, downloadDisplayedCount);
+    let html = '';
+    items.forEach(item => {
+        html += `
+            <div class="history-item download-item">
+                <div class="history-filename">${item.filename}</div>
+                <div class="history-time">${item.time}</div>
+            </div>
+        `;
+    });
+    content.innerHTML = html;
+    
+    const downloadLoading = document.getElementById('download-loading');
+    if (downloadHistory.length > downloadDisplayedCount) {
+        downloadLoading.classList.add('active');
+    } else {
+        downloadLoading.classList.remove('active');
+    }
+}
+
+function handleScroll(type, element) {
+    const scrollTop = element.scrollTop;
+    const scrollHeight = element.scrollHeight;
+    const clientHeight = element.clientHeight;
+    
+    if (scrollTop + clientHeight >= scrollHeight - 50) {
+        if (type === 'upload' && !uploadLoading && uploadHistory.length > uploadDisplayedCount) {
+            uploadLoading = true;
+            setTimeout(() => {
+                uploadDisplayedCount += 5;
+                updateUploadHistory();
+                uploadLoading = false;
+            }, 500);
+        } else if (type === 'download' && !downloadLoading && downloadHistory.length > downloadDisplayedCount) {
+            downloadLoading = true;
+            setTimeout(() => {
+                downloadDisplayedCount += 5;
+                updateDownloadHistory();
+                downloadLoading = false;
+            }, 500);
+        }
+    }
+}
+
+// ==========================================
+// 复制功能
+// ==========================================
+
+function copyExtractCode() {
+    const codeEl = document.getElementById('extract-code-text');
+    const indicator = document.getElementById('extract-copy-indicator');
+    
+    if (codeEl && indicator) {
+        // 🔒 安全调用
+        if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(codeEl.textContent).then(() => {
+                indicator.textContent = '已复制！';
+                indicator.className = 'copy-indicator success';
+                setTimeout(() => {
+                    indicator.textContent = '点击复制';
+                    indicator.className = 'copy-indicator pending';
+                }, 2000);
+            }).catch(err => {
+                console.error('复制失败:', err);
+                showError('复制失败，请手动复制');
+            });
+        } else {
+            showError('浏览器环境不支持自动复制');
+        }
+    }
+}
+
+function copyDeleteCode() {
+    const codeEl = document.getElementById('delete-code-text');
+    const indicator = document.getElementById('delete-copy-indicator');
+    
+    if (codeEl && indicator) {
+        // 🔒 安全调用
+        if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(codeEl.textContent).then(() => {
+                indicator.textContent = '已复制！';
+                indicator.className = 'copy-indicator success';
+                setTimeout(() => {
+                    indicator.textContent = '点击复制';
+                    indicator.className = 'copy-indicator pending';
+                }, 2000);
+            }).catch(err => {
+                console.error('复制失败:', err);
+                showError('复制失败，请手动复制');
+            });
+        } else {
+            showError('浏览器环境不支持自动复制');
+        }
+    }
+}
+
+function copyHistoryCode(code, type) {
+    // 🔒 安全调用
+    if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(code).then(() => {
+            const tooltip = document.createElement('div');
+            tooltip.textContent = `${type}已复制！`;
+            tooltip.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: var(--success-color);
+                color: white;
+                padding: 12px 24px;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: 600;
+                z-index: 10000;
+                animation: fadeIn 0.3s ease;
+            `;
+            document.body.appendChild(tooltip);
+            
+            setTimeout(() => {
+                tooltip.style.animation = 'fadeOut 0.3s ease';
+                setTimeout(() => {
+                    document.body.removeChild(tooltip);
+                }, 300);
+            }, 1500);
+        }).catch(err => {
+            console.error('复制失败:', err);
+            showError('复制失败，请手动复制');
+        });
+    } else {
+        alert("复制失败：浏览器环境限制，请手动复制: " + code);
+    }
+}
+
+// ==========================================
+// 消息提示功能
+// ==========================================
+
+function showError(message) {
+    const errorDiv = document.getElementById('receive-error');
+    if (errorDiv) {
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+        setTimeout(() => {
+            errorDiv.style.display = 'none';
+        }, 5000);
+    }
+}
+
+function showSuccess(message) {
+    const successDiv = document.getElementById('receive-success');
+    if (successDiv) {
+        successDiv.textContent = message;
+        successDiv.style.display = 'block';
+        setTimeout(() => {
+            successDiv.style.display = 'none';
+        }, 5000);
+    }
+}
+
+// ==========================================
+// 加载状态管理
+// ==========================================
+
+function showLoading() {
+    const loadingOverlay = document.getElementById('loading-overlay');
+    if (loadingOverlay) {
+        loadingOverlay.style.display = 'flex';
+        loadingOverlay.setAttribute('aria-hidden', 'false');
+    }
+}
+
+function hideLoading() {
+    const loadingOverlay = document.getElementById('loading-overlay');
+    if (loadingOverlay) {
+        loadingOverlay.style.display = 'none';
+        loadingOverlay.setAttribute('aria-hidden', 'true');
+    }
+}
+
+// ==========================================
+// 页面导航
+// ==========================================
+
+function goToAdmin() {
+    window.location.href = '/admin';
+}
+
+function closeModal() {
+    const modal = document.getElementById('success-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// ==========================================
+// 拖拽上传功能
+// ==========================================
+
+function initDragAndDrop() {
+    const uploadArea = document.querySelector('.upload-area');
+    
+    if (!uploadArea) {
+        console.warn('未找到上传区域');
+        return;
+    }
+    
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.style.borderColor = 'var(--secondary-color)';
+        uploadArea.style.background = 'linear-gradient(135deg, rgba(102, 126, 234, 0.2) 0%, rgba(118, 75, 162, 0.2) 100%)';
+        uploadArea.classList.add('drag-over');
+    });
+
+    uploadArea.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        uploadArea.style.borderColor = 'var(--primary-color)';
+        uploadArea.style.background = 'linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%)';
+        uploadArea.classList.remove('drag-over');
+    });
+
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.style.borderColor = 'var(--primary-color)';
+        uploadArea.style.background = 'linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%)';
+        uploadArea.classList.remove('drag-over');
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            const file = files[0];
+            const maxSizeMB = systemConfig.max_upload_size;
+            const maxSizeBytes = maxSizeMB * 1024 * 1024;
+            
+            if (file.size > maxSizeBytes) {
+                showError(`文件大小超过限制（最大 ${maxSizeMB}MB）`);
+                return;
+            }
+            
+            const allowedExtensions = systemConfig.allowed_extensions.split(',');
+            const fileExtension = file.name.split('.').pop().toLowerCase();
+            if (allowedExtensions.length > 0 && !allowedExtensions.includes(fileExtension)) {
+                showError(`不支持的文件类型：${fileExtension}`);
+                return;
+            }
+            
+            document.getElementById('file-input').files = files;
+            handleFileUpload({ target: { files: files } });
+        }
+    });
+}
+
+// ==========================================
+// 页面初始化
+// ==========================================
+
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('老默闪传主页面初始化...');
+    
+    // 加载系统配置
+    loadSystemConfig();
+    
+    // 关闭弹窗
+    const modal = document.getElementById('success-modal');
+    if (modal) {
+        modal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeModal();
+            }
+        });
+    }
+    
+    // 初始化拖拽
+    initDragAndDrop();
+    
+    // 键盘回车支持
+    const extractInput = document.getElementById('extract-code');
+    if (extractInput) {
+        extractInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') handleReceive();
+        });
+    }
+    
+    const deleteInput = document.getElementById('delete-code');
+    if (deleteInput) {
+        deleteInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') handleReceive();
+        });
+    }
+    
+    // 在线状态监听
+    window.addEventListener('online', () => {
+        console.log('网络已连接');
+        loadSystemConfig();
+    });
+    
+    window.addEventListener('offline', () => {
+        console.warn('网络已断开');
+        showError('网络已断开，请检查网络连接');
+    });
+    
+    console.log('老默闪传主页面初始化完成');
+});

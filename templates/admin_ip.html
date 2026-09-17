@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <!-- 
+     * IP访问控制页面 - 闪传系统
+     * 功能：管理IP白名单和黑名单，控制访问权限
+     * 作者：闪传系统
+     * 更新时间：2025-12-22
+     -->
+    <meta charset="UTF-8">
+    <!-- 设置视口，确保在移动设备上正常显示 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- SEO优化：描述和关键词 -->
+    <meta name="description" content="闪传 - IP访问控制管理页面">
+    <meta name="keywords" content="IP访问控制,白名单,黑名单,访问权限">
+    <!-- 动态标题 -->
+    <title>IP访问控制 - 闪传</title>
+    <!-- 引入管理后台样式 -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <h1>IP访问控制</h1>
+                <div class="header-actions">
+                    <a href="/admin" class="btn btn-primary">返回设置</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container"> 
+        <!-- 
+         * 当前IP信息显示区域
+         * 显示当前访问者的IP地址和访问状态
+         -->
+        <section class="current-info" aria-live="polite">
+            <h3>当前IP信息</h3>
+            <p>
+                <strong>您的IP地址:</strong>
+                <span id="current-ip">加载中...</span>
+                <button 
+                    class="btn btn-sm btn-primary" 
+                    onclick="loadCurrentIP()" 
+                    style="margin-left: 10px;"
+                    aria-label="刷新当前IP信息"
+                >
+                    🔄 刷新
+                </button>
+            </p>
+            <p>
+                <strong>访问状态:</strong>
+                <span id="access-status">检查中...</span>
+            </p>
+        </section>
+
+        <!-- 
+         * 全局配置区域
+         * 配置IP访问控制的全局开关和默认策略
+         -->
+        <section class="ip-control-section">
+            <h2 style="margin: 0 0 15px 0; color: #333;">⚙️ 全局配置</h2>
+            
+            <!-- 启用IP访问控制开关 -->
+            <div class="form-group">
+                <label>
+                    <span class="toggle-switch">
+                        <input type="checkbox" id="ip-enabled">
+                        <span class="slider"></span>
+                    </span>
+                    启用IP访问控制
+                </label>
+                <p class="help-text">
+                    启用后, 将根据下方配置的规则控制访问权限
+                </p>
+            </div>
+            
+            <!-- 默认访问策略 -->
+            <div class="form-group">
+                <label for="default-policy">默认访问策略</label>
+                <select id="default-policy" aria-describedby="default-policy-help">
+                    <option value="allow">允许（黑名单模式）</option>
+                    <option value="deny">拒绝（白名单模式）</option>
+                </select>
+                <small id="default-policy-help" class="help-text">
+                    黑名单模式: 只拒绝黑名单中的IP, 其他都允许<br>
+                    白名单模式: 只允许白名单中的IP, 其他都拒绝
+                </small>
+            </div>
+            
+            <!-- 记录IP访问日志 -->
+            <div class="form-group">
+                <label>
+                    <span class="toggle-switch">
+                        <input type="checkbox" id="log-access" checked>
+                        <span class="slider"></span>
+                    </span>
+                    记录IP访问日志
+                </label>
+                <p class="help-text">
+                    记录所有IP访问尝试, 方便排查问题
+                </p>
+            </div>
+            
+            <!-- 保存配置按钮 -->
+            <button class="btn btn-primary" onclick="updateConfig()" aria-label="保存全局配置">
+                💾 保存配置
+            </button>
+        </section>
+
+        <!-- 
+         * 添加IP访问控制规则区域
+         * 用于添加新的白名单或黑名单规则
+         -->
+        <section class="ip-control-section">
+            <h2 style="margin: 0 0 15px 0; color: #333;">➕ 添加IP访问控制规则</h2>
+            
+            <!-- IP范围输入 -->
+            <div class="form-group">
+                <label for="ip-range">
+                    IP范围（CIDR格式）
+                    <span class="required-mark" title="必填项">*</span>
+                </label>
+                <input 
+                    type="text" 
+                    id="ip-range" 
+                    placeholder="例如: 192.168.1.0/24 或单个IP 192.168.1.100"
+                    aria-describedby="ip-range-help"
+                >
+                <small id="ip-range-help" class="help-text">
+                    支持 IPv4 和 IPv6, 可以是单个IP或IP段（使用CIDR格式）
+                </small>
+            </div>
+            
+            <!-- 访问类型选择 -->
+            <div class="form-group">
+                <label for="access-type">
+                    规则类型
+                    <span class="required-mark" title="必填项">*</span>
+                </label>
+                <select id="access-type" aria-describedby="access-type-help">
+                    <option value="whitelist">🟢 白名单（允许）</option>
+                    <option value="blacklist">🔴 黑名单（拒绝）</option>
+                </select>
+                <small id="access-type-help" class="help-text">
+                    白名单: 只允许此IP访问<br>
+                    黑名单: 禁止此IP访问
+                </small>
+            </div>
+            
+            <!-- 规则描述 -->
+            <div class="form-group">
+                <label for="description">描述（可选）</label>
+                <textarea 
+                    id="description" 
+                    rows="2" 
+                    placeholder="例如: 公司内网IP段"
+                    maxlength="200"
+                ></textarea>
+                <small class="help-text">
+                    为此规则添加说明, 便于识别和管理（最多200字）
+                </small>
+            </div>
+            
+            <!-- 添加规则按钮 -->
+            <button class="btn btn-success" onclick="addRule()" aria-label="添加新的IP访问规则">
+                ➕ 添加规则
+            </button>
+        </section>
+
+        <!-- 
+         * 现有规则列表区域
+         * 显示所有已添加的IP访问控制规则
+         -->
+        <section class="ip-control-section">
+            <h2 style="margin: 0 0 10px 0; color: #333;">📋 现有规则</h2>
+            
+            <!-- 规则数量统计 -->
+            <div class="rules-count" id="rules-count">
+                共 <strong>0</strong> 条规则
+            </div>
+            
+            <!-- 规则列表容器 -->
+            <div id="rules-list" role="list" aria-label="IP访问规则列表">
+                <p style="text-align: center; color: #999; padding: 20px;">
+                    加载中...
+                </p>
+            </div>
+        </section>
+    </div>
+    
+    <!-- 
+     * 加载遮罩层
+     * 用于显示操作过程中的加载状态
+     -->
+    <div id="loading-overlay" class="loading-overlay" aria-hidden="true">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <!-- 
+     * 引入管理后台JavaScript脚本
+     * 包含所有管理功能和IP访问控制逻辑
+     -->
+    <div id="confirm-modal" class="modal-overlay" role="dialog" aria-modal="true" style="display:none;">
+        <div class="modal-content admin-modal">
+            <button type="button" class="close-btn" onclick="closeConfirmModal(false)" aria-label="关闭">✕</button>
+            <h3 id="confirm-title">确认操作</h3>
+            <p id="confirm-message" class="confirm-text"></p>
+            <div class="confirm-actions">
+                <button type="button" class="btn btn-danger" id="confirm-ok">确定</button>
+                <button type="button" class="btn btn-ghost" id="confirm-cancel">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+</body>
+</html>

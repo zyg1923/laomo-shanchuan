@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <!-- 
+        主页面 - 老默闪传文件传输系统
+        功能：文件上传、下载、历史记录管理
+        作者：老默闪传系统
+        更新时间：2025-12-22
+    -->
+    <meta charset="UTF-8">
+    <!-- 设置视口，确保在移动设备上正常显示 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- SEO优化：描述和关键词 -->
+    <meta name="description" content="{{ site_title }} - {{ site_subtitle }}，简单快速，安全可靠的文件传输服务">
+    <meta name="keywords" content="文件传输,文件分享,临时文件,快速传输">
+    <!-- 动态标题，显示网站名称 -->
+    <title>{{ site_title }} - {{ site_subtitle }}</title>
+    <!-- 引入主页面样式 -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+    <!-- 
+     * 页面头部
+     * 包含Logo、网站标题和导航菜单
+     -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <!-- 
+                 * Logo区域
+                 * 点击可跳转到管理后台（如果用户知道这个功能）
+                 -->
+                <div class="logo" onclick="goToAdmin()" style="cursor: pointer;" title="点击进入管理后台">
+                    <!-- 网站Logo图片 -->
+                    <img src="{{ logo_url }}" alt="{{ site_title }} LOGO" loading="lazy">
+                    <div class="logo-text">
+                        <h1>{{ site_title }}</h1>
+                        <p>{{ site_subtitle }}</p>
+                    </div>
+                </div>
+                
+                <!-- 
+                 * 导航菜单
+                 * 包含文件传输和收发记录两个页面
+                 -->
+                <nav class="nav">
+                    <a href="#" class="active" onclick="showPage('main'); return false;" aria-label="文件传输页面">
+                        文件传输
+                    </a>
+                    <a href="#" onclick="showPage('history'); return false;" aria-label="收发记录页面">
+                        收发记录
+                    </a>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- 
+     * 页面头部信息
+     * 显示页面顶部的提示文字
+     -->
+    <div class="page-header">
+        <div class="container">
+            <p>{{ header_text or '简单快速，安全可靠的文件传输服务' }}</p>
+        </div>
+    </div>
+
+    <!-- 
+     * 主内容容器
+     * 包含文件传输页面和历史记录页面
+     -->
+    <main class="main-container">
+        <div class="container">
+            <!-- 
+             * 文件传输页面
+             * 默认显示，包含上传和下载两个区域
+             -->
+            <div id="main-page">
+                <!-- 
+                 * 内容网格布局
+                 * 上传区域和下载区域并排显示
+                 -->
+                <div class="content-grid">
+                    <!-- 
+                     * 发文件（上传）区域
+                     * 用户在此区域上传文件
+                     -->
+                    <article class="content-card">
+                        <div class="card-header">
+                            <h2>📤 发送文件</h2>
+                            <p>简单2步，极速传文件给他人</p>
+                        </div>
+                        
+                        <!-- 
+                         * 上传区域
+                         * 支持点击选择文件和拖拽上传
+                         -->
+                        <div class="upload-area" id="upload-area" onclick="document.getElementById('file-input').click()">
+                            <!-- 文件图标 -->
+                            <i>📁</i>
+                            <!-- 提示文字 -->
+                            <p>选择文件</p>
+                            <small>或拖拽到白色区域内</small>
+                            <!-- 文件选择输入框（隐藏） -->
+                            <input 
+                                type="file" 
+                                id="file-input" 
+                                style="display: none;" 
+                                onchange="handleFileUpload(event)"
+                                aria-label="选择文件上传"
+                            >
+                            
+                            <!-- 
+                             * 配置信息显示
+                             * 显示当前系统的限制配置
+                             -->
+                            <div class="upload-info">
+                                <small>
+                                    最大文件大小：<span id="max-size-display">50MB</span> | 
+                                    最大下载次数：<span id="max-downloads-display">10次</span> | 
+                                    最大分享时限：<span id="max-hours-display">72小时</span>
+                                </small>
+                            </div>
+                        </div>
+                        
+                        <!-- 
+                         * 最大下载次数设置
+                         * 用户可以设置文件的最大下载次数
+                         -->
+                        <div class="input-group">
+                            <label for="max_downloads">最大下载次数</label>
+                            <input 
+                                type="number" 
+                                id="max_downloads" 
+                                value="1" 
+                                min="1" 
+                                max="10"
+                                aria-describedby="max-downloads-help"
+                            >
+                            <small id="max-downloads-help" class="file-size">
+                                下载文件后，文件会自动删除
+                            </small>
+                        </div>
+                        
+                        <!-- 
+                         * 分享时限设置
+                         * 用户可以设置文件的分享时效
+                         -->
+                        <div class="input-group">
+                            <label for="expire_hours">分享时限 (小时)</label>
+                            <input 
+                                type="number" 
+                                id="expire_hours" 
+                                value="24" 
+                                min="1" 
+                                max="72"
+                                aria-describedby="expire-hours-help"
+                            >
+                            <small id="expire-hours-help" class="file-size">
+                                超过此时间，文件会自动删除
+                            </small>
+                        </div>
+                    </article>
+
+                    <!-- 
+                     * 收文件（下载）区域
+                     * 用户在此区域输入提取码或删除码
+                     -->
+                    <article class="content-card">
+                        <div class="card-header">
+                            <h2>📥 接收文件</h2>
+                            <p>输入提取码或删除码下载文件</p>
+                        </div>
+                        
+                        <!-- 
+                         * 提取码输入框
+                         * 用于下载文件
+                         -->
+                        <div class="input-group">
+                            <label for="extract-code">提取码</label>
+                            <input 
+                                type="text" 
+                                id="extract-code" 
+                                placeholder="请输入提取码" 
+                                oninput="updateButtonText()"
+                                aria-label="输入提取码下载文件"
+                                maxlength="6"
+                            >
+                        </div>
+                        
+                        <!-- 
+                         * 删除码输入框
+                         * 用于删除文件
+                         -->
+                        <div class="input-group">
+                            <label for="delete-code">删除码</label>
+                            <input 
+                                type="text" 
+                                id="delete-code" 
+                                placeholder="请输入删除码" 
+                                oninput="updateButtonText()"
+                                aria-label="输入删除码删除文件"
+                                maxlength="16"
+                            >
+                        </div>
+                        
+                        <!-- 
+                         * 操作按钮
+                         * 根据输入的代码类型自动切换按钮文字和颜色
+                         -->
+                        <button id="action-button" class="btn btn-primary" onclick="handleReceive()" aria-live="polite">
+                            下载文件
+                        </button>
+                        
+                        <!-- 
+                         * 消息提示区域
+                         * 显示操作成功或失败的消息
+                         -->
+                        <div id="receive-error" class="message error" role="alert" aria-live="assertive"></div>
+                        <div id="receive-success" class="message success" role="status" aria-live="polite"></div>
+                    </article>
+                </div>
+            </div>
+
+            <!-- 
+             * 历史记录页面
+             * 默认隐藏，显示上传和下载的历史记录
+             -->
+            <div id="history-page" style="display: none;">
+                <!-- 
+                 * 历史记录网格布局
+                 * 上传记录和下载记录并排显示
+                 -->
+                <div class="history-grid">
+                    <!-- 
+                     * 上传记录区域
+                     * 显示用户上传的所有文件记录
+                     -->
+                    <section class="history-section">
+                        <div class="history-header">
+                            <h3 class="history-title">📤 上传记录</h3>
+                        </div>
+                        <!-- 
+                         * 上传记录内容区域
+                         * 支持滚动加载更多记录
+                         -->
+                        <div 
+                            id="upload-history-content" 
+                            class="history-content" 
+                            onscroll="handleScroll('upload', this)"
+                            role="list"
+                            aria-label="上传记录列表"
+                        >
+                            <div class="empty-state">
+                                <i>📂</i>
+                                <p>暂无上传记录</p>
+                            </div>
+                        </div>
+                        <!-- 
+                         * 加载指示器
+                         * 滚动到底部时显示
+                         -->
+                        <div id="upload-loading" class="loading-indicator" aria-live="polite">
+                            加载中...
+                        </div>
+                    </section>
+
+                    <!-- 
+                     * 下载记录区域
+                     * 显示用户下载的所有文件记录
+                     -->
+                    <section class="history-section">
+                        <div class="history-header">
+                            <h3 class="history-title">📥 下载记录</h3>
+                        </div>
+                        <!-- 
+                         * 下载记录内容区域
+                         * 支持滚动加载更多记录
+                         -->
+                        <div 
+                            id="download-history-content" 
+                            class="history-content" 
+                            onscroll="handleScroll('download', this)"
+                            role="list"
+                            aria-label="下载记录列表"
+                        >
+                            <div class="empty-state">
+                                <i>💾</i>
+                                <p>暂无下载记录</p>
+                            </div>
+                        </div>
+                        <!-- 
+                         * 加载指示器
+                         * 滚动到底部时显示
+                         -->
+                        <div id="download-loading" class="loading-indicator" aria-live="polite">
+                            加载中...
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 
+     * 页面底部
+     * 显示警告信息和版权信息
+     -->
+    <footer class="footer">
+        <div class="warning">
+            <span aria-hidden="true">⚠️</span>
+            <span>{{ footer_text or '发送违法、违规等有害信息，会受到司法严惩。' }}</span>
+        </div>
+        <div class="checkbox-group">
+            <label for="agreement">IM'MO</label>
+        </div>
+    </footer>
+
+    <!-- 
+     * 成功弹窗
+     * 文件上传成功后显示，包含提取码和删除码
+     -->
+    <div id="success-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <div class="modal-content">
+            <!-- 关闭按钮 -->
+            <button class="close-btn" onclick="closeModal()" aria-label="关闭弹窗">✕</button>
+            
+            <!-- 弹窗标题 -->
+            <h3 id="modal-title" style="margin-top: 0; margin-bottom: 25px; color: #333;">
+                🎉 文件上传成功！
+            </h3>
+            
+            <!-- 提取码显示区域 -->
+            <div class="code-display">
+                <div class="code-label">提取码</div>
+                <div 
+                    class="code-value" 
+                    id="extract-code-display" 
+                    onclick="copyExtractCode()"
+                    role="button"
+                    tabindex="0"
+                    aria-label="点击复制提取码"
+                >
+                    <span id="extract-code-text">ABC123</span>
+                    <span id="extract-copy-indicator" class="copy-indicator">已自动复制</span>
+                </div>
+            </div>
+            
+            <!-- 删除码显示区域 -->
+            <div class="code-display">
+                <div class="code-label">删除码（仅显示一次）</div>
+                <div 
+                    class="code-value" 
+                    id="delete-code-display" 
+                    onclick="copyDeleteCode()"
+                    role="button"
+                    tabindex="0"
+                    aria-label="点击复制删除码"
+                >
+                    <span id="delete-code-text">XYZ789012345</span>
+                    <span id="delete-copy-indicator" class="copy-indicator pending">点击复制</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 
+     * 加载遮罩层
+     * 用于显示上传和下载过程中的加载状态
+     -->
+    <div id="loading-overlay" class="loading-overlay" aria-hidden="true">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <!-- 引入主页面JavaScript -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

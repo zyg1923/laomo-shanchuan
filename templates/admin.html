@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <!-- 
+        管理后台页面 - 闪传系统
+        功能：系统配置、文件管理、访问控制等
+        作者：闪传系统
+        更新时间：2025-12-22
+    -->
+    <meta charset="UTF-8">
+    <!-- 设置视口，确保在移动设备上正常显示 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- SEO优化：描述和关键词 -->
+    <meta name="description" content="{{ site_title }} - 管理后台, 系统设置和文件管理">
+    <meta name="keywords" content="管理后台,系统设置,文件管理">
+    <!-- 动态标题，显示网站名称 -->
+    <title>站长设置 - {{ site_title }}</title>
+    <!-- 引入管理后台样式 -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+</head>
+<body>
+    <!-- 
+     * 页面头部
+     * 包含标题和b保存按钮、退出登录按钮
+     -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <!-- 页面标题 -->
+                <h1><a href="/" class="header-home-link" title="返回首页">⚙️ 站长设置</a></h1>
+                <!-- ✨ 右侧按钮组 -->
+                <div class="header-actions">
+                    <a href="/" class="btn btn-primary" aria-label="返回文件传输页面">返回首页</a>
+                    <button
+                        class="btn btn-success"
+                        aria-label="保存所有设置"
+                        id="save-button"
+                    >
+                        保存设置
+                    </button>
+                    <button type="button" class="logout-btn" id="logout-button" aria-label="退出登录">
+                        退出登录
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 
+     * 主内容容器
+     * 包含所有设置卡片和系统管理
+     -->
+    <main class="container">
+        <!-- 
+         * 消息提示区域
+         * 用于显示保存成功或失败的消息
+         -->
+        <div id="success-message" class="message success" role="alert" aria-live="polite"></div>
+        <div id="error-message" class="message error" role="alert" aria-live="assertive"></div>
+        
+        <!-- 
+         * 设置网格布局
+         * 自动适应屏幕大小，显示所有设置卡片
+         -->
+        <div class="settings-grid">
+            <!-- 
+             * 基本设置卡片
+             * 包含网站标题、副标题、LOGO等基本配置
+             -->
+            <section class="settings-card">
+                <div class="card-header">
+                    <h2>🎨 基本设置</h2>
+                </div>
+                
+                <!-- 网站标题 -->
+                <div class="form-group">
+                    <label for="site_title">
+                        网站标题
+                        <span class="required-mark" title="必填项">*</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        id="site_title" 
+                        placeholder="请输入网站标题"
+                        required
+                        aria-describedby="site-title-help"
+                        maxlength="50"
+                    >
+                    <small id="site-title-help" class="extension-help">
+                        显示在页面顶部的网站名称
+                    </small>
+                </div>
+                
+                <!-- 网站副标题 -->
+                <div class="form-group">
+                    <label for="site_subtitle">网站副标题</label>
+                    <input 
+                        type="text" 
+                        id="site_subtitle" 
+                        placeholder="请输入网站副标题"
+                        maxlength="100"
+                    >
+                    <small class="extension-help">
+                        显示在标题下方的简短描述
+                    </small>
+                </div>
+                
+                <!-- 网站LOGO -->
+                <div class="form-group">
+                    <label>网站LOGO</label>
+                    <div class="logo-preview">
+                        <label class="logo-hit" for="logo-upload" title="点击更换LOGO">
+                            <img id="logo-preview" src="" alt="LOGO">
+                            <span class="logo-hit-tip">点击更换</span>
+                        </label>
+                        <input
+                            type="file"
+                            id="logo-upload"
+                            accept="image/png, image/jpeg, image/gif"
+                            aria-label="上传网站LOGO图片"
+                        >
+                        <div class="extension-help">
+                            支持 PNG、JPG、GIF 格式, 建议尺寸 40x40 像素
+                        </div>
+                    </div>
+                    <!-- LOGO URL隐藏字段 -->
+                    <input 
+                        type="hidden" 
+                        id="logo_url" 
+                        placeholder="LOGO URL"
+                    >
+                </div>
+                
+                <!-- 页面顶部文字 -->
+                <div class="form-group">
+                    <label for="header_text">页面顶部文字</label>
+                    <input 
+                        type="text" 
+                        id="header_text" 
+                        placeholder="请输入页面顶部显示的文字"
+                        maxlength="200"
+                    >
+                    <small id="header-text-help" class="extension-help">
+                        显示在页面顶部的提示文字, 最多200字
+                    </small>
+                </div>
+                
+                <!-- 页面底部文字 -->
+                <div class="form-group">
+                    <label for="footer_text">页面底部文字</label>
+                    <input 
+                        type="text" 
+                        id="footer_text" 
+                        placeholder="请输入页面底部显示的文字"
+                        maxlength="200"
+                    >
+                    <small id="footer-text-help" class="extension-help">
+                        显示在页面底部的提示文字, 最多200字
+                    </small>
+                </div>
+            </section>
+
+            <!-- 
+             * 上传设置卡片
+             * 包含文件上传相关的配置
+             -->
+            <section class="settings-card">
+                <div class="card-header">
+                    <h2>📁 上传设置</h2>
+                </div>
+                
+                <!-- 最大上传大小 -->
+                <div class="form-group">
+                    <label for="max_upload_size">
+                        最大上传大小(MB)
+                        <span class="required-mark" title="必填项">*</span>
+                    </label>
+                    <input 
+                        type="number" 
+                        id="max_upload_size" 
+                        min="1" 
+                        placeholder="50"
+                        required
+                        aria-describedby="max-upload-size-help"
+                    >
+                    <small id="max-upload-size-help" class="extension-help">
+                        用户上传文件的最大限制(单位MB)
+                    </small>
+                </div>
+                
+                <!-- 允许上传的文件类型 -->
+                <div class="form-group">
+                    <label for="allowed_extensions">允许上传的文件类型</label>
+                    <input
+                        type="text"
+                        id="allowed_extensions"
+                        placeholder=""
+                    >
+                    <small class="extension-help">
+                        留空表示允许所有文件类型。若填写则用英文逗号分隔, 例如: jpg,png,pdf
+                    </small>
+                </div>
+                
+                <!-- 文件存储位置 -->
+                <div class="form-group">
+                    <label for="upload_folder">
+                        文件存储位置
+                        <span class="required-mark" title="必填项">*</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        id="upload_folder" 
+                        placeholder="uploads"
+                        required
+                        aria-describedby="upload-folder-help"
+                    >
+                    <small id="upload-folder-help" class="extension-help">
+                        相对于项目根目录的路径
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <label for="listen_port">
+                        服务端口
+                        <span class="required-mark" title="必填项">*</span>
+                    </label>
+                    <input 
+                        type="number" 
+                        id="listen_port" 
+                        min="1" 
+                        max="65535" 
+                        placeholder="5000"
+                        required
+                    >
+                    <small class="extension-help">
+                        修改后需重启闪传才会生效, 也可直接改程序目录下的 config.json
+                    </small>
+                </div>
+            </section>
+
+            <!-- 
+             * 下载设置卡片
+             * 包含文件下载相关的配置
+             -->
+            <section class="settings-card">
+                <div class="card-header">
+                    <h2>⬇️ 下载设置</h2>
+                </div>
+                
+                <!-- 最大下载次数 -->
+                <div class="form-group">
+                    <label for="max_downloads">
+                        最大下载次数
+                        <span class="required-mark" title="必填项">*</span>
+                    </label>
+                    <input 
+                        type="number" 
+                        id="max_downloads" 
+                        min="1" 
+                        max="100" 
+                        placeholder="10"
+                        required
+                        aria-describedby="max-downloads-help"
+                    >
+                    <small id="max-downloads-help" class="extension-help">
+                        用户上传文件时可设置的最大下载次数, 1-100次
+                    </small>
+                </div>
+                
+                <!-- 最大分享时限 -->
+                <div class="form-group">
+                    <label>
+                        过期时间
+                        <span class="required-mark" title="必填项">*</span>
+                    </label>
+                    <div class="duration-picker">
+                        <input type="number" id="max_expire_amount" min="1" step="1" placeholder="3" required>
+                        <select id="max_expire_unit">
+                            <option value="minute">分钟</option>
+                            <option value="hour">小时</option>
+                            <option value="day">天</option>
+                            <option value="week">周</option>
+                            <option value="month">月</option>
+                        </select>
+                    </div>
+                    <input type="hidden" id="max_expire_hours">
+                    <small id="max-expire-hours-help" class="extension-help">
+                        用户上传文件时可设置的最大分享时间
+                    </small>
+                </div>
+                <div class="form-group">
+                    <label for="expire_warn_hours">即将过期提醒(小时)</label>
+                    <input type="number" id="expire_warn_hours" min="0" step="0.1" placeholder="1">
+                    <small class="extension-help">
+                        合并分享时, 剩余时间不足该小时数则提醒注意文件过期
+                    </small>
+                </div>
+            </section>
+
+            <!-- 
+             * 安全设置卡片
+             * 包含管理员密码和访问控制
+             -->
+            <section class="settings-card">
+                <div class="card-header">
+                    <h2>🔐 安全设置</h2>
+                </div>
+                
+                <!-- 管理员密码 -->
+                <div class="form-group">
+                    <label for="admin_username">管理员账号</label>
+                    <input type="text" id="admin_username" placeholder="admin">
+                </div>
+                <div class="form-group">
+                    <label for="admin_password">
+                        管理员密码
+                        <span class="required-mark" title="建议修改">*</span>
+                    </label>
+                    <div class="password-field">
+                    <input 
+                        type="password" 
+                        id="admin_password" 
+                        placeholder="请输入新密码"
+                        aria-describedby="admin-password-help"
+                    >
+                    <button type="button" class="pwd-eye" onclick="togglePasswordVisible('admin_password', this)" aria-label="显示密码"></button>
+                    </div>
+                    <small id="admin-password-help" class="extension-help">
+                        留空则不修改密码, 建议使用强密码
+                    </small>
+                </div>
+
+                <!-- 访问控制入口 -->
+                <div class="admin-section">
+                    <h3>访问控制</h3>
+                    <a href="/admin/ip-access" class="btn btn-primary ip-access-btn">IP访问控制</a>
+                </div>
+            </section>
+
+            <!-- 
+             * 系统管理卡片
+             * 包含统计信息、清理和重置功能
+             -->
+            <section class="settings-card">
+                <div class="card-header">
+                    <h2>🔧 系统管理</h2>
+                </div>
+                
+                <!-- 系统统计信息 -->
+                <div style="background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%); padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                    <h3 style="margin: 0 0 15px 0; color: #667eea; font-size: 16px;">
+                        📊 系统统计
+                    </h3>
+                    
+                    <!-- 统计网格布局 -->
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">
+                        <!-- 总文件数 -->
+                        <div class="stat-card">
+                            <div class="stat-value" id="total-files">-</div>
+                            <div class="stat-label">总文件数</div>
+                        </div>
+                        
+                        <!-- 活跃文件数 -->
+                        <div class="stat-card">
+                            <div class="stat-value" id="active-files">-</div>
+                            <div class="stat-label">活跃文件</div>
+                        </div>
+                        
+                        <!-- 已过期文件数 -->
+                        <div class="stat-card">
+                            <div class="stat-value" id="expired-files">-</div>
+                            <div class="stat-label">已过期</div>
+                        </div>
+                        
+                        <!-- 达到上限的文件数 -->
+                        <div class="stat-card">
+                            <div class="stat-value" id="limit-reached-files">-</div>
+                            <div class="stat-label">达上限</div>
+                        </div>
+                        
+                        <!-- 总文件大小 -->
+                        <div class="stat-card" style="grid-column: 1 / -1;">
+                            <div class="stat-value" id="total-size">-</div>
+                            <div class="stat-label">总大小</div>
+                        </div>
+                        
+                        <!-- 存储位置 -->
+                        <div class="stat-card" style="grid-column: 1 / -1;">
+                            <div class="stat-value" id="upload-folder" style="font-size: 14px;">-</div>
+                            <div class="stat-label">存储位置</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 清理系统缓存 -->
+                <div style="margin-bottom: 20px;">
+                    <h3 style="margin: 0 0 10px 0; color: #667eea; font-size: 16px;">
+                        🧹 清理系统缓存
+                    </h3>
+                    <p style="margin: 0 0 15px 0; font-size: 13px; color: #666;">
+                        清理孤立的文件和临时数据, 不会影响正常使用的文件
+                    </p>
+                    <button 
+                        class="btn btn-primary" 
+                        onclick="cleanupSystem()"
+                        aria-label="清理系统缓存"
+                    >
+                        🧹 一键清理
+                    </button>
+                </div>
+                
+                <!-- 重置系统警告区域 -->
+                <div class="warning-zone">
+                    <h3 style="margin: 0 0 10px 0; color: #f56565; font-size: 16px;">
+                        ⚠️ 重置系统
+                    </h3>
+                    <p class="warning-desc">
+                        删除所有文件和记录, 恢复到初始状态(除管理员密码)
+                    </p>
+                    <div class="form-group">
+                        <label for="reset-confirm-password">确认管理员密码</label>
+                        <div class="password-field">
+                            <input
+                                type="password"
+                                id="reset-confirm-password"
+                                placeholder="请输入当前管理员密码"
+                            >
+                            <button type="button" class="pwd-eye" onclick="togglePasswordVisible('reset-confirm-password', this)" aria-label="显示密码"></button>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        class="btn btn-danger"
+                        onclick="resetSystem()"
+                    >
+                        重置系统
+                    </button>
+                </div>
+            </section>
+        </div>
+
+    </main>
+    
+    <!-- 
+     * 加载遮罩层
+     * 用于显示保存和清理过程中的加载状态
+     -->
+    <div id="loading-overlay" class="loading-overlay" aria-hidden="true">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <!-- 引入管理后台JavaScript -->
+    <div id="confirm-modal" class="modal-overlay" role="dialog" aria-modal="true" style="display:none;">
+        <div class="modal-content admin-modal">
+            <button type="button" class="close-btn" onclick="closeConfirmModal(false)" aria-label="关闭">✕</button>
+            <h3 id="confirm-title">确认操作</h3>
+            <p id="confirm-message" class="confirm-text"></p>
+            <div class="confirm-actions">
+                <button type="button" class="btn btn-danger" id="confirm-ok">确定</button>
+                <button type="button" class="btn btn-ghost" id="confirm-cancel">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+</body>
+</html>
