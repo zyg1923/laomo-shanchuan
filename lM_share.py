@@ -598,7 +598,7 @@ def init_default_configs():
         elif key == 'site_title' and existing.value == '老默闪传':
             existing.value = value
             existing.updated_at = datetime.now()
-            logger.info("网站标题已从「老默闪传」更新为「闪传」")
+            logger.info("网站标题已更新为「闪传」")
         elif key in ('site_subtitle', 'site_title', 'header_text', 'footer_text') and existing.value:
             cleaned = strip_im_brand(existing.value).replace('，', ',').replace('：', ':')
             if key == 'header_text' and cleaned.strip() in (

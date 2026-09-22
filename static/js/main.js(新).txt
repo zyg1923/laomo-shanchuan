@@ -1,11 +1,11 @@
 /**
- * 老默闪传 - 主页面JavaScript脚本
+ * 闪传 - 主页面JavaScript脚本
  * 版本：终极修复版
  * 修复内容：
  * 1. 修复配置读取接口 (从 /admin/config 改为 /api/config)
  * 2. 修复公网 IP 访问时剪贴板 API 崩溃问题
  * 3. 修复输入框读取逻辑 (适配 index.html ID，增加容错)
- * 作者：老默闪传系统
+ * 作者：闪传系统
  */
 
 // ==========================================
@@ -731,7 +731,7 @@ function initDragAndDrop() {
 // ==========================================
 
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('老默闪传主页面初始化...');
+    console.log('闪传主页面初始化...');
     
     // 加载系统配置
     loadSystemConfig();
@@ -775,5 +775,5 @@ document.addEventListener('DOMContentLoaded', function() {
         showError('网络已断开，请检查网络连接');
     });
     
-    console.log('老默闪传主页面初始化完成');
+    console.log('闪传主页面初始化完成');
 });
