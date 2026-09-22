@@ -1300,6 +1300,9 @@ async function downloadByExtractCode(code) {
         if (document.getElementById('history-page') && document.getElementById('history-page').style.display !== 'none') {
             updateHistoryPage();
         }
+        if (isModalVisible('note-file-modal') && noteFileModalCodes.length) {
+            loadNoteFileModal(noteFileModalCodes);
+        }
     } catch (error) {
         showError(error.message);
     } finally {
@@ -1619,6 +1622,7 @@ function getOpenModals() {
         'shared-perm-modal',
         'admin-login-modal',
         'success-modal',
+        'note-file-modal',
         'transfer-progress-modal'
     ].filter(isModalVisible);
 }
@@ -1664,6 +1668,10 @@ function handleModalKeys(e) {
     }
     if (top === 'success-modal') {
         closeModal();
+        return;
+    }
+    if (top === 'note-file-modal') {
+        return;
     }
 }
 
@@ -1685,6 +1693,10 @@ function closeTopModal() {
     }
     if (top === 'success-modal') {
         closeModal();
+        return;
+    }
+    if (top === 'note-file-modal') {
+        closeNoteFileModal();
         return;
     }
     if (top === 'transfer-progress-modal') {
@@ -1817,7 +1829,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const confirmCancel = document.getElementById('confirm-cancel');
     if (confirmOk) confirmOk.addEventListener('click', function () { closeConfirmModal(true); });
     if (confirmCancel) confirmCancel.addEventListener('click', function () { closeConfirmModal(false); });
-    ['confirm-modal', 'admin-login-modal', 'shared-perm-modal', 'success-modal', 'transfer-progress-modal'].forEach(function (id) {
+    ['confirm-modal', 'admin-login-modal', 'shared-perm-modal', 'success-modal', 'note-file-modal', 'transfer-progress-modal'].forEach(function (id) {
         const el = document.getElementById(id);
         if (!el) return;
         el.addEventListener('click', function (e) {
@@ -2426,8 +2438,7 @@ async function fetchFilesFromNote(noteId) {
         showError('留言中没有找到提取码');
         return;
     }
-    if (!(await confirmManyFilesDownload(codes.length))) return;
-    downloadBundle(codes);
+    openNoteFileModal(codes);
 }
 
 async function fetchFilesFromEditor() {
@@ -2438,8 +2449,114 @@ async function fetchFilesFromEditor() {
         showError('编辑器中没有找到提取码');
         return;
     }
+    openNoteFileModal(codes);
+}
+
+let noteFileModalCodes = [];
+
+function fileSizeBlock(item) {
+    if (item == null || item.file_size == null) return '';
+    return `<div class="history-downloads">文件大小 ${escapeHtml(formatProgressSize(item.file_size))}</div>`;
+}
+
+function renderNoteFileItem(item) {
+    const extract = item.extract_code || '';
+    if (item.error && !item.filename) {
+        return `
+        <div class="history-item">
+            <div class="history-item-head">
+                <input type="checkbox" class="share-pick note-file-pick" disabled>
+                <div class="history-filename">提取码 ${escapeHtml(extract)}</div>
+            </div>
+            <div class="history-downloads">${escapeHtml(item.error)}</div>
+        </div>`;
+    }
+    const canCopy = !!(extract && !item.expired && item.file_available);
+    const downloadable = !!item.downloadable;
+    const timeLine = item.upload_time
+        ? `<div class="history-time">${item.operator_ip ? '上传人 IP: ' + escapeHtml(item.operator_ip) + ' · ' : ''}上传时间 ${escapeHtml(item.upload_time)}</div>`
+        : '';
+    return `
+    <div class="history-item">
+        <div class="history-item-head">
+            <input type="checkbox" class="share-pick note-file-pick" ${downloadable ? '' : 'disabled'} data-extract="${escapeHtml(extract)}" data-filename="${escapeHtml(item.filename || '')}">
+            <div class="history-filename">${escapeHtml(item.filename || ('提取码 ' + extract))}</div>
+        </div>
+        ${fileSizeBlock(item)}
+        ${downloadCountText(item)}
+        ${expireBlock(item)}
+        ${timeLine}
+        <div class="history-row">
+            <span class="history-label">提取码</span>
+            <span class="history-code">${escapeHtml(extract)}</span>
+            ${historyActionBtn('复制', canCopy, `copyHistoryCode('${extract}', '提取码')`)}
+            ${historyActionBtn('下载', downloadable, `downloadByExtractCode('${extract}')`)}
+        </div>
+    </div>`;
+}
+
+async function loadNoteFileModal(codes) {
+    const list = document.getElementById('note-file-list');
+    if (!list) return;
+    list.innerHTML = '<div class="empty-state"><p>正在获取文件信息...</p></div>';
+    try {
+        const response = await apiFetch('/api/file-info', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ codes: codes })
+        });
+        const data = await response.json().catch(function () { return {}; });
+        if (!response.ok) throw new Error(data.error || '获取文件信息失败');
+        const items = data.items || [];
+        if (!items.length) {
+            list.innerHTML = '<div class="empty-state"><p>没有可显示的文件信息</p></div>';
+            return;
+        }
+        list.innerHTML = items.map(renderNoteFileItem).join('');
+        refreshExpireCountdowns();
+    } catch (error) {
+        list.innerHTML = `<div class="empty-state"><p>${escapeHtml(error.message)}</p></div>`;
+    }
+}
+
+async function openNoteFileModal(codes) {
+    noteFileModalCodes = codes || [];
+    const modal = document.getElementById('note-file-modal');
+    if (modal) modal.style.display = 'flex';
+    await loadNoteFileModal(noteFileModalCodes);
+}
+
+function closeNoteFileModal() {
+    const modal = document.getElementById('note-file-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+function toggleSelectNoteFiles() {
+    const boxes = Array.from(document.querySelectorAll('#note-file-list .note-file-pick:not(:disabled)'));
+    if (!boxes.length) {
+        showError('当前没有可下载的文件');
+        return;
+    }
+    const allChecked = boxes.every(function (box) { return box.checked; });
+    boxes.forEach(function (box) { box.checked = !allChecked; });
+}
+
+async function downloadSelectedNoteFiles() {
+    const boxes = document.querySelectorAll('#note-file-list .note-file-pick:checked');
+    const codes = [];
+    boxes.forEach(function (box) {
+        const extract = box.getAttribute('data-extract');
+        if (extract) codes.push(extract);
+    });
+    if (!codes.length) {
+        showError('请先勾选要下载的文件');
+        return;
+    }
     if (!(await confirmManyFilesDownload(codes.length))) return;
-    downloadBundle(codes);
+    await downloadBundle(codes);
+    if (isModalVisible('note-file-modal') && noteFileModalCodes.length) {
+        loadNoteFileModal(noteFileModalCodes);
+    }
 }
 
 // ==========================================

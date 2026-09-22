@@ -602,6 +602,19 @@
         <div class="loading-spinner"></div>
     </div>
 
+    <div id="note-file-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="note-file-modal-title" style="display:none;">
+        <div class="modal-content note-file-modal">
+            <button class="close-btn" onclick="closeNoteFileModal()" aria-label="关闭">✕</button>
+            <h3 id="note-file-modal-title">文件信息</h3>
+            <div id="note-file-list" class="note-file-list" aria-label="留言中的文件信息"></div>
+            <div class="confirm-actions note-file-actions">
+                <button type="button" class="filter-btn" onclick="toggleSelectNoteFiles()">全选</button>
+                <button type="button" class="btn btn-primary" onclick="downloadSelectedNoteFiles()">下载选中</button>
+                <button type="button" class="btn btn-secondary" onclick="closeNoteFileModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+
     <div id="transfer-progress-modal" class="modal-overlay transfer-progress-modal" role="dialog" aria-modal="true" aria-labelledby="transfer-progress-title" style="display:none;">
         <div class="modal-content transfer-progress-card">
             <h3 id="transfer-progress-title">传输中</h3>

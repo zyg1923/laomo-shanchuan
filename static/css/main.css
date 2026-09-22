@@ -2272,6 +2272,41 @@ input:valid {
     line-height: 1.6;
 }
 
+.note-file-modal {
+    max-width: 640px;
+    text-align: left;
+    max-height: 86vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.note-file-modal h3 {
+    margin-top: 0;
+    margin-bottom: 16px;
+    color: #333;
+}
+
+.note-file-list {
+    overflow: auto;
+    max-height: 58vh;
+    padding-right: 4px;
+}
+
+.note-file-list .history-item {
+    margin-bottom: 10px;
+}
+
+.note-file-list .history-item:last-child {
+    margin-bottom: 0;
+}
+
+.note-file-actions {
+    margin-top: 16px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
 .password-field {
     position: relative;
     display: block;

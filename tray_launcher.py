@@ -196,7 +196,7 @@ class ShanChuanApp:
             tk.Label(self.root, text='闪传', font=('Microsoft YaHei', 20, 'bold')).pack(pady=(12, 4))
 
         tk.Label(self.root, text='闪传', font=('Microsoft YaHei', 12)).pack()
-        tk.Label(self.root, text='配置来自 config.json，可改后点重启生效',
+        tk.Label(self.root, text='修改会自动保存。端口和地址需点重启后生效',
                  font=('Microsoft YaHei', 8), fg='#888').pack()
 
         form = tk.Frame(self.root)
@@ -217,6 +217,12 @@ class ShanChuanApp:
         self.start_tray_var = tk.BooleanVar(value=bool(self.cfg['start_in_tray']))
         tk.Checkbutton(form, text='启动后最小化到托盘', variable=self.start_tray_var).grid(
             row=3, column=0, columnspan=2, sticky='w', pady=2)
+
+        self._config_ready = False
+        self._save_after = None
+        for var in (self.port_var, self.host_var, self.auto_open_var, self.start_tray_var):
+            var.trace_add('write', self._schedule_save_config)
+        self._config_ready = True
 
         self.status = tk.Label(self.root, text='正在启动服务...', fg='#555')
         self.status.pack(pady=4)
@@ -243,23 +249,46 @@ class ShanChuanApp:
         self.auto_open_var.set(bool(self.cfg.get('auto_open_browser', False)))
         self.start_tray_var.set(bool(self.cfg.get('start_in_tray', False)))
 
-    def save_ui_to_config(self):
+    def _schedule_save_config(self, *_args):
+        if not getattr(self, '_config_ready', False) or self.exiting:
+            return
+        if self._save_after:
+            try:
+                self.root.after_cancel(self._save_after)
+            except Exception:
+                pass
+        self._save_after = self.root.after(250, self._persist_ui_silent)
+
+    def _persist_ui_silent(self):
+        self._save_after = None
+        self.save_ui_to_config(silent=True, apply_port=False)
+
+    def save_ui_to_config(self, silent=False, apply_port=True):
+        raw_port = str(self.port_var.get()).strip()
         try:
-            port = int(str(self.port_var.get()).strip())
+            port = int(raw_port)
         except ValueError:
-            messagebox.showerror('闪传', '端口必须是数字')
-            return None
-        if port < 1 or port > 65535:
-            messagebox.showerror('闪传', '端口范围 1-65535')
-            return None
+            port = None
+        if port is None or port < 1 or port > 65535:
+            if silent:
+                port = int(self.cfg.get('port', 5000))
+            else:
+                messagebox.showerror('闪传', '端口必须是 1-65535 的数字')
+                return None
         host = str(self.host_var.get()).strip() or '0.0.0.0'
-        self.cfg = save_config({
-            'port': port,
-            'host': host,
-            'auto_open_browser': bool(self.auto_open_var.get()),
-            'start_in_tray': bool(self.start_tray_var.get()),
-        })
-        self.port = self.cfg['port']
+        try:
+            self.cfg = save_config({
+                'port': port,
+                'host': host,
+                'auto_open_browser': bool(self.auto_open_var.get()),
+                'start_in_tray': bool(self.start_tray_var.get()),
+            })
+        except Exception as exc:
+            if not silent:
+                messagebox.showerror('闪传', '保存配置失败：' + str(exc))
+            return None
+        if apply_port:
+            self.port = self.cfg['port']
         return self.cfg
 
     def find_python(self):
@@ -313,6 +342,7 @@ class ShanChuanApp:
             self.tray = None
 
     def hide_to_tray(self):
+        self.save_ui_to_config(silent=True, apply_port=False)
         self.root.withdraw()
         if self.tray:
             try:
@@ -403,6 +433,7 @@ class ShanChuanApp:
     def quit_and_stop(self):
         if self.exiting:
             return
+        self.save_ui_to_config(silent=True, apply_port=False)
         self.exiting = True
         try:
             self.status.config(text='正在停止服务...')

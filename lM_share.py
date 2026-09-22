@@ -1158,6 +1158,66 @@ def share_remaining_hours(file_record):
     return max(1, int((seconds + 3599) // 3600))
 
 
+def serialize_public_file_info(code):
+    """按提取码/删除码返回可展示的文件信息，过期或失效时也返回详情。"""
+    raw = str(code or '').strip().upper()
+    rec = find_file_by_any_code(raw)
+    if not rec:
+        return {
+            'extract_code': raw,
+            'filename': '',
+            'file_size': 0,
+            'current_downloads': None,
+            'max_downloads': None,
+            'expires_at': None,
+            'expired': True,
+            'file_available': False,
+            'downloadable': False,
+            'upload_time': '',
+            'operator_ip': '',
+            'remaining_hours': 0,
+            'remaining_seconds': 0,
+            'error': '无效的提取码',
+        }
+    file_path = os.path.join(get_upload_folder(), rec.filename_on_disk)
+    available = os.path.exists(file_path)
+    size = os.path.getsize(file_path) if available else 0
+    now = datetime.now()
+    expired = bool(rec.expires_at and now > rec.expires_at)
+    remain = (rec.expires_at - now).total_seconds() if rec.expires_at else 0
+    limit_reached = rec.current_downloads >= rec.max_downloads
+    downloadable = bool(available and not expired and not limit_reached)
+    error = None
+    if not available:
+        error = '文件不存在'
+    elif expired:
+        error = '文件已过期'
+    elif limit_reached:
+        error = '已达到最大下载次数'
+    upload = None
+    if rec.share_uid:
+        upload = ShareTransfer.query.filter_by(
+            share_uid=rec.share_uid,
+            event_type='upload'
+        ).order_by(ShareTransfer.created_at.asc()).first()
+    return {
+        'filename': rec.original_filename,
+        'extract_code': rec.extract_code,
+        'file_size': size,
+        'current_downloads': rec.current_downloads,
+        'max_downloads': rec.max_downloads,
+        'expires_at': rec.expires_at.strftime('%Y-%m-%d %H:%M:%S') if rec.expires_at else None,
+        'expired': expired or not available,
+        'file_available': available,
+        'downloadable': downloadable,
+        'upload_time': rec.upload_time.strftime('%Y-%m-%d %H:%M:%S') if rec.upload_time else '',
+        'operator_ip': display_client_ip(upload.operator_ip) if upload else '',
+        'remaining_hours': 0 if expired else max(0, remain / 3600.0),
+        'remaining_seconds': max(0, int(remain)),
+        'error': error,
+    }
+
+
 def describe_share(file_record):
     upload_folder = get_upload_folder()
     file_path = os.path.join(upload_folder, file_record.filename_on_disk) if file_record else ''
@@ -3621,40 +3681,31 @@ def download_or_delete_file(code):
 @app.route('/file-info/<code>', methods=['GET'])
 @ip_access_required
 def get_file_info(code):
-    """
-    获取文件信息路由
-    根据提取码获取文件的基本信息
-    """
+    """根据提取码获取文件详情（过期/失效也返回信息，便于弹窗展示）。"""
     client_ip = get_client_ip()
     logger.debug(f"获取文件信息: 提取码={code}, IP={client_ip}")
-    
-    file_record = find_file_by_extract_code(code)
-    if not file_record:
-        logger.warning(f"文件不存在: 提取码={code}, IP={client_ip}")
-        return jsonify({'error': '无效的提取码'}), 404
-    
-    # 检查文件是否过期
-    if datetime.now() > file_record.expires_at:
-        logger.warning(f"文件已过期: 提取码={code}, IP={client_ip}")
-        return jsonify({'error': '文件已过期'}), 410
-    
-    # 检查是否达到下载次数限制
-    if file_record.current_downloads >= file_record.max_downloads:
-        logger.warning(f"已达到最大下载次数: 提取码={code}, IP={client_ip}")
-        return jsonify({'error': '已达到最大下载次数'}), 409
-    
-    # 检查文件是否真实存在
-    upload_folder = os.path.abspath(get_config('upload_folder', 'uploads'))
-    file_path = os.path.join(upload_folder, file_record.filename_on_disk)
-    if not os.path.exists(file_path):
-        logger.error(f"文件不存在: 提取码={code}, 文件名={file_record.filename_on_disk}, IP={client_ip}")
-        # 如果文件不存在，清理数据库记录
-        db.session.delete(file_record)
-        db.session.commit()
-        return jsonify({'error': '文件不存在'}), 404
-    
+    item = serialize_public_file_info(code)
+    if item.get('error') == '无效的提取码':
+        return jsonify(item), 404
+    return jsonify(item)
+
+
+@app.route('/api/file-info', methods=['POST'])
+@ip_access_required
+def api_file_info():
+    """批量查询留言中的提取码对应文件信息。"""
+    data = request.get_json(silent=True) or {}
+    raw_codes = data.get('codes') if isinstance(data.get('codes'), list) else []
+    seen = []
+    for item in raw_codes:
+        for code in parse_share_codes(item):
+            if code not in seen:
+                seen.append(code)
+    for code in parse_share_codes(data.get('text') or ''):
+        if code not in seen:
+            seen.append(code)
     return jsonify({
-        'filename': file_record.original_filename
+        'items': [serialize_public_file_info(code) for code in seen]
     })
 
 
