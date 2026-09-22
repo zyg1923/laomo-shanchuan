@@ -1,6 +1,12 @@
 # 闪传 v2.0
 
-局域网传文件的 Flask 服务。开发时用 Python 跑，发给别人时打成单个 exe。
+仓库地址：https://github.com/zyg1923/shanchuan
+
+```powershell
+git clone https://github.com/zyg1923/shanchuan.git
+```
+
+局域网传文件的 Flask 服务。开发时用 Python 跑，发给别人时打成单个 exe。克隆后如何打包、缺了哪些文件，见下面的「打包」和「未入库的文件」。
 
 ## 环境
 
